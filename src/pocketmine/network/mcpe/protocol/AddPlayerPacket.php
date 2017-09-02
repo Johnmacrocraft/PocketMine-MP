@@ -19,40 +19,59 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
 
+use pocketmine\item\Item;
 use pocketmine\network\mcpe\NetworkSession;
+use pocketmine\utils\UUID;
 
 class AddPlayerPacket extends DataPacket{
 	const NETWORK_ID = ProtocolInfo::ADD_PLAYER_PACKET;
 
+	/** @var UUID */
 	public $uuid;
+	/** @var string */
 	public $username;
-	public $eid;
+	/** @var int|null */
+	public $entityUniqueId = null; //TODO
+	/** @var int */
+	public $entityRuntimeId;
 	public $x;
 	public $y;
 	public $z;
-	public $speedX;
-	public $speedY;
-	public $speedZ;
-	public $pitch;
-	public $headYaw;
-	public $yaw;
+	public $speedX = 0.0;
+	public $speedY = 0.0;
+	public $speedZ = 0.0;
+	public $pitch = 0.0;
+	public $headYaw = null; //TODO
+	public $yaw = 0.0;
+	/** @var Item */
 	public $item;
 	public $metadata = [];
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->uuid = $this->getUUID();
+		$this->username = $this->getString();
+		$this->entityUniqueId = $this->getEntityUniqueId();
+		$this->entityRuntimeId = $this->getEntityRuntimeId();
+		$this->getVector3f($this->x, $this->y, $this->z);
+		$this->getVector3f($this->speedX, $this->speedY, $this->speedZ);
+		$this->pitch = $this->getLFloat();
+		$this->headYaw = $this->getLFloat();
+		$this->yaw = $this->getLFloat();
+		$this->item = $this->getSlot();
+		$this->metadata = $this->getEntityMetadata();
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putUUID($this->uuid);
 		$this->putString($this->username);
-		$this->putEntityUniqueId($this->eid);
-		$this->putEntityRuntimeId($this->eid);
+		$this->putEntityUniqueId($this->entityUniqueId ?? $this->entityRuntimeId);
+		$this->putEntityRuntimeId($this->entityRuntimeId);
 		$this->putVector3f($this->x, $this->y, $this->z);
 		$this->putVector3f($this->speedX, $this->speedY, $this->speedZ);
 		$this->putLFloat($this->pitch);

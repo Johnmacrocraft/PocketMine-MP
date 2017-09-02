@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -29,21 +31,25 @@ use pocketmine\network\mcpe\NetworkSession;
 class SetSpawnPositionPacket extends DataPacket{
 	const NETWORK_ID = ProtocolInfo::SET_SPAWN_POSITION_PACKET;
 
-	public $unknown;
+	const TYPE_PLAYER_SPAWN = 0;
+	const TYPE_WORLD_SPAWN = 1;
+
+	public $spawnType;
 	public $x;
 	public $y;
 	public $z;
-	public $unknownBool;
+	public $spawnForced;
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->spawnType = $this->getVarInt();
+		$this->getBlockPosition($this->x, $this->y, $this->z);
+		$this->spawnForced = $this->getBool();
 	}
 
-	public function encode(){
-		$this->reset();
-		$this->putVarInt($this->unknown);
+	public function encodePayload(){
+		$this->putVarInt($this->spawnType);
 		$this->putBlockPosition($this->x, $this->y, $this->z);
-		$this->putBool($this->unknownBool);
+		$this->putBool($this->spawnForced);
 	}
 
 	public function handle(NetworkSession $session) : bool{

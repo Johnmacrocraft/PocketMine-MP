@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -31,42 +33,74 @@ class StartGamePacket extends DataPacket{
 
 	public $entityUniqueId;
 	public $entityRuntimeId;
+	public $playerGamemode;
 	public $x;
 	public $y;
 	public $z;
+	public $pitch;
+	public $yaw;
 	public $seed;
 	public $dimension;
 	public $generator = 1; //default infinite - 0 old, 1 infinite, 2 flat
-	public $gamemode;
+	public $worldGamemode;
 	public $difficulty;
 	public $spawnX;
 	public $spawnY;
 	public $spawnZ;
-	public $hasAchievementsDisabled = 1;
+	public $hasAchievementsDisabled = true;
 	public $dayCycleStopTime = -1; //-1 = not stopped, any positive value = stopped at that time
-	public $eduMode = 0;
+	public $eduMode = false;
 	public $rainLevel;
 	public $lightningLevel;
 	public $commandsEnabled;
-	public $isTexturePacksRequired = 0;
+	public $isTexturePacksRequired = true;
+	public $gameRules = []; //TODO: implement this
 	public $levelId = ""; //base64 string, usually the same as world folder name in vanilla
 	public $worldName;
+	public $premiumWorldTemplateId = "";
+	public $unknownBool = false;
+	public $currentTick = 0;
 
-	public function decode(){
+	public function decodePayload(){
+		$this->entityUniqueId = $this->getEntityUniqueId();
+		$this->entityRuntimeId = $this->getEntityRuntimeId();
+		$this->playerGamemode = $this->getVarInt();
+		$this->getVector3f($this->x, $this->y, $this->z);
+		$this->pitch = $this->getLFloat();
+		$this->yaw = $this->getLFloat();
+		$this->seed = $this->getVarInt();
+		$this->dimension = $this->getVarInt();
+		$this->generator = $this->getVarInt();
+		$this->worldGamemode = $this->getVarInt();
+		$this->difficulty = $this->getVarInt();
+		$this->getBlockPosition($this->spawnX, $this->spawnY, $this->spawnZ);
+		$this->hasAchievementsDisabled = $this->getBool();
+		$this->dayCycleStopTime = $this->getVarInt();
+		$this->eduMode = $this->getBool();
+		$this->rainLevel = $this->getLFloat();
+		$this->lightningLevel = $this->getLFloat();
+		$this->commandsEnabled = $this->getBool();
+		$this->isTexturePacksRequired = $this->getBool();
+		$this->gameRules = $this->getGameRules();
+		$this->levelId = $this->getString();
+		$this->worldName = $this->getString();
+		$this->premiumWorldTemplateId = $this->getString();
+		$this->unknownBool = $this->getBool();
+		$this->currentTick = $this->getLLong();
 
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putEntityUniqueId($this->entityUniqueId);
 		$this->putEntityRuntimeId($this->entityRuntimeId);
+		$this->putVarInt($this->playerGamemode);
 		$this->putVector3f($this->x, $this->y, $this->z);
-		$this->putLFloat(0); //TODO: find out what these are (yaw/pitch?)
-		$this->putLFloat(0);
+		$this->putLFloat($this->pitch);
+		$this->putLFloat($this->yaw);
 		$this->putVarInt($this->seed);
 		$this->putVarInt($this->dimension);
 		$this->putVarInt($this->generator);
-		$this->putVarInt($this->gamemode);
+		$this->putVarInt($this->worldGamemode);
 		$this->putVarInt($this->difficulty);
 		$this->putBlockPosition($this->spawnX, $this->spawnY, $this->spawnZ);
 		$this->putBool($this->hasAchievementsDisabled);
@@ -76,8 +110,12 @@ class StartGamePacket extends DataPacket{
 		$this->putLFloat($this->lightningLevel);
 		$this->putBool($this->commandsEnabled);
 		$this->putBool($this->isTexturePacksRequired);
+		$this->putGameRules($this->gameRules);
 		$this->putString($this->levelId);
 		$this->putString($this->worldName);
+		$this->putString($this->premiumWorldTemplateId);
+		$this->putBool($this->unknownBool);
+		$this->putLLong($this->currentTick);
 	}
 
 	public function handle(NetworkSession $session) : bool{

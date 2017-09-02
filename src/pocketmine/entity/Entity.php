@@ -19,12 +19,15 @@
  *
 */
 
+declare(strict_types=1);
+
 /**
  * All the entity classes
  */
 namespace pocketmine\entity;
 
 use pocketmine\block\Block;
+use pocketmine\block\BlockFactory;
 use pocketmine\block\Water;
 use pocketmine\event\entity\EntityDamageEvent;
 use pocketmine\event\entity\EntityDespawnEvent;
@@ -34,6 +37,7 @@ use pocketmine\event\entity\EntityRegainHealthEvent;
 use pocketmine\event\entity\EntitySpawnEvent;
 use pocketmine\event\entity\EntityTeleportEvent;
 use pocketmine\event\Timings;
+use pocketmine\event\TimingsHandler;
 use pocketmine\level\format\Chunk;
 use pocketmine\level\Level;
 use pocketmine\level\Location;
@@ -48,11 +52,9 @@ use pocketmine\nbt\tag\ByteTag;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\DoubleTag;
 use pocketmine\nbt\tag\FloatTag;
-use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\ListTag;
 use pocketmine\nbt\tag\ShortTag;
 use pocketmine\nbt\tag\StringTag;
-use pocketmine\network\mcpe\protocol\MobEffectPacket;
 use pocketmine\network\mcpe\protocol\RemoveEntityPacket;
 use pocketmine\network\mcpe\protocol\SetEntityDataPacket;
 use pocketmine\Player;
@@ -60,6 +62,8 @@ use pocketmine\plugin\Plugin;
 use pocketmine\Server;
 
 abstract class Entity extends Location implements Metadatable{
+
+	const MOTION_THRESHOLD = 0.00001;
 
 	const NETWORK_ID = -1;
 
@@ -74,49 +78,83 @@ abstract class Entity extends Location implements Metadatable{
 	const DATA_TYPE_VECTOR3F = 8;
 
 	const DATA_FLAGS = 0;
-	//1 (int)
+	const DATA_HEALTH = 1; //int (minecart/boat)
 	const DATA_VARIANT = 2; //int
-	const DATA_COLOUR = 3; //byte
+	const DATA_COLOR = 3, DATA_COLOUR = 3; //byte
 	const DATA_NAMETAG = 4; //string
 	const DATA_OWNER_EID = 5; //long
-
+	const DATA_TARGET_EID = 6; //long
 	const DATA_AIR = 7; //short
 	const DATA_POTION_COLOR = 8; //int (ARGB!)
 	const DATA_POTION_AMBIENT = 9; //byte
+	/* 10 (byte) */
+	const DATA_HURT_TIME = 11; //int (minecart/boat)
+	const DATA_HURT_DIRECTION = 12; //int (minecart/boat)
+	const DATA_PADDLE_TIME_LEFT = 13; //float
+	const DATA_PADDLE_TIME_RIGHT = 14; //float
+	const DATA_EXPERIENCE_VALUE = 15; //int (xp orb)
+	const DATA_MINECART_DISPLAY_BLOCK = 16; //int (id | (data << 16))
+	const DATA_MINECART_DISPLAY_OFFSET = 17; //int
+	const DATA_MINECART_HAS_DISPLAY = 18; //byte (must be 1 for minecart to show block inside)
+
+	//TODO: add more properties
+
+	const DATA_ENDERMAN_HELD_ITEM_ID = 23; //short
+	const DATA_ENDERMAN_HELD_ITEM_DAMAGE = 24; //short
+	const DATA_ENTITY_AGE = 25; //short
 
 	/* 27 (byte) player-specific flags
 	 * 28 (int) player "index"?
 	 * 29 (block coords) bed position */
+	const DATA_FIREBALL_POWER_X = 30; //float
+	const DATA_FIREBALL_POWER_Y = 31;
+	const DATA_FIREBALL_POWER_Z = 32;
+	/* 33 (unknown)
+	 * 34 (float) fishing bobber
+	 * 35 (float) fishing bobber
+	 * 36 (float) fishing bobber */
+	const DATA_POTION_AUX_VALUE = 37; //short
 	const DATA_LEAD_HOLDER_EID = 38; //long
 	const DATA_SCALE = 39; //float
 	const DATA_INTERACTIVE_TAG = 40; //string (button text)
-	/* 41 (long) */
-	const DATA_URL_TAG = 43; //string
-	const DATA_MAX_AIR = 44; //short
-	const DATA_MARK_VARIANT = 45; //int
-	/* 46 (byte)
-	 * 47 (int)
-	 * 48 (int)
-	 * 49 (long)
-	 * 50 (long)
-	 * 51 (long)
-	 * 52 (short)
-	 * 53 (unknown) */
+	const DATA_NPC_SKIN_ID = 41; //string
+	const DATA_URL_TAG = 42; //string
+	const DATA_MAX_AIR = 43; //short
+	const DATA_MARK_VARIANT = 44; //int
+	/* 45 (byte) container stuff
+	 * 46 (int) container stuff
+	 * 47 (int) container stuff */
+	const DATA_BLOCK_TARGET = 48; //block coords (ender crystal)
+	const DATA_WITHER_INVULNERABLE_TICKS = 49; //int
+	const DATA_WITHER_TARGET_1 = 50; //long
+	const DATA_WITHER_TARGET_2 = 51; //long
+	const DATA_WITHER_TARGET_3 = 52; //long
+	/* 53 (short) */
 	const DATA_BOUNDING_BOX_WIDTH = 54; //float
 	const DATA_BOUNDING_BOX_HEIGHT = 55; //float
 	const DATA_FUSE_LENGTH = 56; //int
-	/* 57 (vector3f)
-	 * 58 (byte)
-	 * 59 (float)
-	 * 60 (float) */
+	const DATA_RIDER_SEAT_POSITION = 57; //vector3f
+	const DATA_RIDER_ROTATION_LOCKED = 58; //byte
+	const DATA_RIDER_MAX_ROTATION = 59; //float
+	const DATA_RIDER_MIN_ROTATION = 60; //float
 	const DATA_AREA_EFFECT_CLOUD_RADIUS = 61; //float
 	const DATA_AREA_EFFECT_CLOUD_WAITING = 62; //int
 	const DATA_AREA_EFFECT_CLOUD_PARTICLE_ID = 63; //int
-	/* 64 (int), shulker-related
-	 * 65 (byte), shulker-related
-	 * 66 (short) shulker-related
-	 * 67 (unknown), shulker-related */
+	/* 64 (int) shulker-related */
+	const DATA_SHULKER_ATTACH_FACE = 65; //byte
+	/* 66 (short) shulker-related */
+	const DATA_SHULKER_ATTACH_POS = 67; //block coords
 	const DATA_TRADING_PLAYER_EID = 68; //long
+
+	/* 70 (byte) command-block */
+	const DATA_COMMAND_BLOCK_COMMAND = 71; //string
+	const DATA_COMMAND_BLOCK_LAST_OUTPUT = 72; //string
+	const DATA_COMMAND_BLOCK_TRACK_OUTPUT = 73; //byte
+	const DATA_CONTROLLING_RIDER_SEAT_NUMBER = 74; //byte
+	const DATA_STRENGTH = 75; //int
+	const DATA_MAX_STRENGTH = 76; //int
+	/* 77 (int)
+	 * 78 (int) */
 
 
 	const DATA_FLAG_ONFIRE = 0;
@@ -125,34 +163,44 @@ abstract class Entity extends Location implements Metadatable{
 	const DATA_FLAG_SPRINTING = 3;
 	const DATA_FLAG_ACTION = 4;
 	const DATA_FLAG_INVISIBLE = 5;
-	const DATA_FLAG_TEMPTED = 6; //???
+	const DATA_FLAG_TEMPTED = 6;
 	const DATA_FLAG_INLOVE = 7;
 	const DATA_FLAG_SADDLED = 8;
 	const DATA_FLAG_POWERED = 9;
-	const DATA_FLAG_IGNITED = 10; //for creepers?
+	const DATA_FLAG_IGNITED = 10;
 	const DATA_FLAG_BABY = 11;
-	const DATA_FLAG_CONVERTING = 12; //???
+	const DATA_FLAG_CONVERTING = 12;
 	const DATA_FLAG_CRITICAL = 13;
 	const DATA_FLAG_CAN_SHOW_NAMETAG = 14;
 	const DATA_FLAG_ALWAYS_SHOW_NAMETAG = 15;
 	const DATA_FLAG_IMMOBILE = 16, DATA_FLAG_NO_AI = 16;
 	const DATA_FLAG_SILENT = 17;
 	const DATA_FLAG_WALLCLIMBING = 18;
-	const DATA_FLAG_RESTING = 19; //for bats?
-	const DATA_FLAG_SITTING = 20;
-	const DATA_FLAG_ANGRY = 21;
-	const DATA_FLAG_INTERESTED = 22; //for mobs following players with food?
-	const DATA_FLAG_CHARGED = 23;
-	const DATA_FLAG_TAMED = 24;
-	const DATA_FLAG_LEASHED = 25;
-	const DATA_FLAG_SHEARED = 26; //for sheep
-	const DATA_FLAG_GLIDING = 27, DATA_FLAG_FALL_FLYING = 27;
-	const DATA_FLAG_ELDER = 28; //elder guardian
-	const DATA_FLAG_MOVING = 29;
-	const DATA_FLAG_BREATHING = 30; //hides bubbles if true
-	const DATA_FLAG_CHESTED = 31; //for mules?
-	const DATA_FLAG_STACKABLE = 32;
-	const DATA_FLAG_IDLING = 36;
+	const DATA_FLAG_CAN_CLIMB = 19;
+	const DATA_FLAG_SWIMMER = 20;
+	const DATA_FLAG_CAN_FLY = 21;
+	const DATA_FLAG_RESTING = 22;
+	const DATA_FLAG_SITTING = 23;
+	const DATA_FLAG_ANGRY = 24;
+	const DATA_FLAG_INTERESTED = 25;
+	const DATA_FLAG_CHARGED = 26;
+	const DATA_FLAG_TAMED = 27;
+	const DATA_FLAG_LEASHED = 28;
+	const DATA_FLAG_SHEARED = 29;
+	const DATA_FLAG_GLIDING = 30;
+	const DATA_FLAG_ELDER = 31;
+	const DATA_FLAG_MOVING = 32;
+	const DATA_FLAG_BREATHING = 33;
+	const DATA_FLAG_CHESTED = 34;
+	const DATA_FLAG_STACKABLE = 35;
+	const DATA_FLAG_SHOWBASE = 36;
+	const DATA_FLAG_REARING = 37;
+	const DATA_FLAG_VIBRATING = 38;
+	const DATA_FLAG_IDLING = 39;
+	const DATA_FLAG_EVOKER_SPELL = 40;
+	const DATA_FLAG_CHARGE_ATTACK = 41;
+
+	const DATA_FLAG_LINGER = 45;
 
 	public static $entityCount = 1;
 	/** @var Entity[] */
@@ -177,20 +225,19 @@ abstract class Entity extends Location implements Metadatable{
 	 */
 	protected $hasSpawned = [];
 
-	/** @var Effect[] */
-	protected $effects = [];
-
+	/** @var int */
 	protected $id;
 
-	protected $dataFlags = 0;
 	protected $dataProperties = [
 		self::DATA_FLAGS => [self::DATA_TYPE_LONG, 0],
 		self::DATA_AIR => [self::DATA_TYPE_SHORT, 400],
 		self::DATA_MAX_AIR => [self::DATA_TYPE_SHORT, 400],
 		self::DATA_NAMETAG => [self::DATA_TYPE_STRING, ""],
 		self::DATA_LEAD_HOLDER_EID => [self::DATA_TYPE_LONG, -1],
-		self::DATA_SCALE => [self::DATA_TYPE_FLOAT, 1],
+		self::DATA_SCALE => [self::DATA_TYPE_FLOAT, 1]
 	];
+
+	protected $changedDataProperties = [];
 
 	public $passenger = null;
 	public $vehicle = null;
@@ -198,86 +245,129 @@ abstract class Entity extends Location implements Metadatable{
 	/** @var Chunk */
 	public $chunk;
 
+	/** @var EntityDamageEvent|null */
 	protected $lastDamageCause = null;
 
 	/** @var Block[] */
 	private $blocksAround = [];
 
+	/** @var float|null */
 	public $lastX = null;
+	/** @var float|null */
 	public $lastY = null;
+	/** @var float|null */
 	public $lastZ = null;
 
+	/** @var float */
 	public $motionX;
+	/** @var float */
 	public $motionY;
+	/** @var float */
 	public $motionZ;
 	/** @var Vector3 */
 	public $temporalVector;
+	/** @var float */
 	public $lastMotionX;
+	/** @var float */
 	public $lastMotionY;
+	/** @var float */
 	public $lastMotionZ;
+	/** @var bool */
+	protected $forceMovementUpdate = false;
 
+	/** @var float */
 	public $lastYaw;
+	/** @var float */
 	public $lastPitch;
 
 	/** @var AxisAlignedBB */
 	public $boundingBox;
+	/** @var bool */
 	public $onGround;
-	public $inBlock = false;
-	public $positionChanged;
-	public $motionChanged;
+	/** @var int */
 	public $deadTicks = 0;
+	/** @var int */
 	protected $age = 0;
 
-	public $height;
-
+	/** @var float */
 	public $eyeHeight = null;
 
+	/** @var float */
+	public $height;
+	/** @var float */
 	public $width;
-	public $length;
 
-	/** @var int */
-	private $health = 20;
+	/** @var float */
+	protected $baseOffset = 0.0;
+
+	/** @var float */
+	private $health = 20.0;
 	private $maxHealth = 20;
 
-	protected $ySize = 0;
-	protected $stepHeight = 0;
+	/** @var float */
+	protected $ySize = 0.0;
+	/** @var float */
+	protected $stepHeight = 0.0;
+	/** @var bool */
 	public $keepMovement = false;
 
-	public $fallDistance = 0;
+	/** @var float */
+	public $fallDistance = 0.0;
+	/** @var int */
 	public $ticksLived = 0;
+	/** @var int */
 	public $lastUpdate;
+	/** @var int */
 	public $maxFireTicks;
+	/** @var int */
 	public $fireTicks = 0;
+	/** @var CompoundTag */
 	public $namedtag;
+	/** @var bool */
 	public $canCollide = true;
 
+	/** @var bool */
 	protected $isStatic = false;
 
+	/** @var bool */
 	public $isCollided = false;
+	/** @var bool */
 	public $isCollidedHorizontally = false;
+	/** @var bool */
 	public $isCollidedVertically = false;
 
+	/** @var int */
 	public $noDamageTicks;
-	protected $justCreated;
+	/** @var bool */
+	protected $justCreated = true;
+	/** @var bool */
 	private $invulnerable;
 
 	/** @var AttributeMap */
 	protected $attributeMap;
 
+	/** @var float */
 	protected $gravity;
+	/** @var float */
 	protected $drag;
 
 	/** @var Server */
 	protected $server;
 
-	public $closed = false;
+	/** @var bool */
+	protected $closed = false;
 
-	/** @var \pocketmine\event\TimingsHandler */
+	/** @var TimingsHandler */
 	protected $timings;
+	/** @var bool */
 	protected $isPlayer = false;
+
+	/** @var bool */
+	protected $constructed = false;
 
 
 	public function __construct(Level $level, CompoundTag $nbt){
+		$this->constructed = true;
 		$this->timings = Timings::getEntityTimings($this);
 
 		$this->isPlayer = $this instanceof Player;
@@ -289,10 +379,9 @@ abstract class Entity extends Location implements Metadatable{
 		}
 
 		$this->id = Entity::$entityCount++;
-		$this->justCreated = true;
 		$this->namedtag = $nbt;
 
-		$this->chunk = $level->getChunk($this->namedtag["Pos"][0] >> 4, $this->namedtag["Pos"][2] >> 4);
+		$this->chunk = $level->getChunk($this->namedtag["Pos"][0] >> 4, $this->namedtag["Pos"][2] >> 4, true);
 		assert($this->chunk !== null);
 		$this->setLevel($level);
 		$this->server = $level->getServer();
@@ -308,8 +397,13 @@ abstract class Entity extends Location implements Metadatable{
 			$this->namedtag->Rotation[1]
 		);
 
+		if(isset($this->namedtag->Motion)){
+			$this->setMotion($this->temporalVector->setComponents($this->namedtag["Motion"][0], $this->namedtag["Motion"][1], $this->namedtag["Motion"][2]));
+		}else{
+			$this->setMotion($this->temporalVector->setComponents(0, 0, 0));
+		}
 
-		$this->setMotion($this->temporalVector->setComponents($this->namedtag["Motion"][0], $this->namedtag["Motion"][1], $this->namedtag["Motion"][2]));
+		$this->resetLastMovements();
 
 		assert(!is_nan($this->x) and !is_infinite($this->x) and !is_nan($this->y) and !is_infinite($this->y) and !is_nan($this->z) and !is_infinite($this->z));
 
@@ -321,7 +415,7 @@ abstract class Entity extends Location implements Metadatable{
 		if(!isset($this->namedtag->Fire)){
 			$this->namedtag->Fire = new ShortTag("Fire", 0);
 		}
-		$this->fireTicks = $this->namedtag["Fire"];
+		$this->fireTicks = (int) $this->namedtag["Fire"];
 
 		if(!isset($this->namedtag->Air)){
 			$this->namedtag->Air = new ShortTag("Air", 300);
@@ -331,12 +425,12 @@ abstract class Entity extends Location implements Metadatable{
 		if(!isset($this->namedtag->OnGround)){
 			$this->namedtag->OnGround = new ByteTag("OnGround", 0);
 		}
-		$this->onGround = $this->namedtag["OnGround"] > 0 ? true : false;
+		$this->onGround = $this->namedtag["OnGround"] !== 0;
 
 		if(!isset($this->namedtag->Invulnerable)){
 			$this->namedtag->Invulnerable = new ByteTag("Invulnerable", 0);
 		}
-		$this->invulnerable = $this->namedtag["Invulnerable"] > 0 ? true : false;
+		$this->invulnerable = $this->namedtag["Invulnerable"] !== 0;
 
 		$this->attributeMap = new AttributeMap();
 		$this->addAttributes();
@@ -361,15 +455,15 @@ abstract class Entity extends Location implements Metadatable{
 	/**
 	 * @return bool
 	 */
-	public function isNameTagVisible(){
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_CAN_SHOW_NAMETAG);
+	public function isNameTagVisible() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_CAN_SHOW_NAMETAG);
 	}
 
 	/**
 	 * @return bool
 	 */
-	public function isNameTagAlwaysVisible(){
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_ALWAYS_SHOW_NAMETAG);
+	public function isNameTagAlwaysVisible() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_ALWAYS_SHOW_NAMETAG);
 	}
 
 
@@ -383,15 +477,15 @@ abstract class Entity extends Location implements Metadatable{
 	/**
 	 * @param bool $value
 	 */
-	public function setNameTagVisible($value = true){
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_CAN_SHOW_NAMETAG, $value);
+	public function setNameTagVisible(bool $value = true){
+		$this->setGenericFlag(self::DATA_FLAG_CAN_SHOW_NAMETAG, $value);
 	}
 
 	/**
 	 * @param bool $value
 	 */
-	public function setNameTagAlwaysVisible($value = true){
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_ALWAYS_SHOW_NAMETAG, $value);
+	public function setNameTagAlwaysVisible(bool $value = true){
+		$this->setGenericFlag(self::DATA_FLAG_ALWAYS_SHOW_NAMETAG, $value);
 	}
 
 	/**
@@ -424,114 +518,205 @@ abstract class Entity extends Location implements Metadatable{
 		$this->setDataProperty(self::DATA_SCALE, self::DATA_TYPE_FLOAT, $value);
 	}
 
-	public function isSneaking(){
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_SNEAKING);
+	public function getBoundingBox(){
+		return $this->boundingBox;
 	}
 
-	public function setSneaking($value = true){
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_SNEAKING, (bool) $value);
+
+	public function isSneaking() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_SNEAKING);
 	}
 
-	public function isSprinting(){
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_SPRINTING);
+	public function setSneaking(bool $value = true){
+		$this->setGenericFlag(self::DATA_FLAG_SNEAKING, $value);
 	}
 
-	public function setSprinting($value = true){
+	public function isSprinting() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_SPRINTING);
+	}
+
+	public function setSprinting(bool $value = true){
 		if($value !== $this->isSprinting()){
-			$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_SPRINTING, (bool) $value);
+			$this->setGenericFlag(self::DATA_FLAG_SPRINTING, $value);
 			$attr = $this->attributeMap->getAttribute(Attribute::MOVEMENT_SPEED);
 			$attr->setValue($value ? ($attr->getValue() * 1.3) : ($attr->getValue() / 1.3), false, true);
 		}
 	}
 
 	public function isImmobile() : bool{
-		return $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_IMMOBILE);
+		return $this->getGenericFlag(self::DATA_FLAG_IMMOBILE);
 	}
 
-	public function setImmobile($value = true){
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_IMMOBILE, $value);
+	public function setImmobile(bool $value = true){
+		$this->setGenericFlag(self::DATA_FLAG_IMMOBILE, $value);
 	}
 
 	/**
+	 * Returns whether the entity is able to climb blocks such as ladders or vines.
+	 * @return bool
+	 */
+	public function canClimb() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_CAN_CLIMB);
+	}
+
+	/**
+	 * Sets whether the entity is able to climb climbable blocks.
+	 * @param bool $value
+	 */
+	public function setCanClimb(bool $value){
+		$this->setGenericFlag(self::DATA_FLAG_CAN_CLIMB, $value);
+	}
+
+	/**
+	 * Returns whether this entity is climbing a block. By default this is only true if the entity is climbing a ladder or vine or similar block.
+	 *
+	 * @return bool
+	 */
+	public function canClimbWalls() : bool{
+		return $this->getGenericFlag(self::DATA_FLAG_WALLCLIMBING);
+	}
+
+	/**
+	 * Sets whether the entity is climbing a block. If true, the entity can climb anything.
+	 *
+	 * @param bool $value
+	 */
+	public function setCanClimbWalls(bool $value = true){
+		$this->setGenericFlag(self::DATA_FLAG_WALLCLIMBING, $value);
+	}
+
+	/**
+	 * Returns the entity ID of the owning entity, or null if the entity doesn't have an owner.
+	 * @return int|null
+	 */
+	public function getOwningEntityId(){
+		return $this->getDataProperty(self::DATA_OWNER_EID);
+	}
+
+	/**
+	 * Returns the owning entity, or null if the entity was not found.
+	 * @return Entity|null
+	 */
+	public function getOwningEntity(){
+		$eid = $this->getOwningEntityId();
+		if($eid !== null){
+			return $this->server->findEntity($eid, $this->level);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Sets the owner of the entity. Passing null will remove the current owner.
+	 *
+	 * @param Entity|null $owner
+	 *
+	 * @throws \InvalidArgumentException if the supplied entity is not valid
+	 */
+	public function setOwningEntity(Entity $owner = null){
+		if($owner === null){
+			$this->removeDataProperty(self::DATA_OWNER_EID);
+		}elseif($owner->closed){
+			throw new \InvalidArgumentException("Supplied owning entity is garbage and cannot be used");
+		}else{
+			$this->setDataProperty(self::DATA_OWNER_EID, self::DATA_TYPE_LONG, $owner->getId());
+		}
+	}
+
+	/**
+	 * Returns the entity ID of the entity's target, or null if it doesn't have a target.
+	 * @return int|null
+	 */
+	public function getTargetEntityId(){
+		return $this->getDataProperty(self::DATA_TARGET_EID);
+	}
+
+	/**
+	 * Returns the entity's target entity, or null if not found.
+	 * This is used for things like hostile mobs attacking entities, and for fishing rods reeling hit entities in.
+	 *
+	 * @return Entity|null
+	 */
+	public function getTargetEntity(){
+		$eid = $this->getTargetEntityId();
+		if($eid !== null){
+			return $this->server->findEntity($eid, $this->level);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Sets the entity's target entity. Passing null will remove the current target.
+	 *
+	 * @param Entity|null $target
+	 *
+	 * @throws \InvalidArgumentException if the target entity is not valid
+	 */
+	public function setTargetEntity(Entity $target = null){
+		if($target === null){
+			$this->removeDataProperty(self::DATA_TARGET_EID);
+		}elseif($target->closed){
+			throw new \InvalidArgumentException("Supplied target entity is garbage and cannot be used");
+		}else{
+			$this->setDataProperty(self::DATA_TARGET_EID, self::DATA_TYPE_LONG, $target->getId());
+		}
+	}
+
+	/**
+	 * @deprecated
+	 *
 	 * @return Effect[]
 	 */
-	public function getEffects(){
-		return $this->effects;
+	public function getEffects() : array{
+		return [];
 	}
 
+	/**
+	 * @deprecated
+	 */
 	public function removeAllEffects(){
-		foreach($this->effects as $effect){
-			$this->removeEffect($effect->getId());
-		}
+
 	}
 
-	public function removeEffect($effectId){
-		if(isset($this->effects[$effectId])){
-			$effect = $this->effects[$effectId];
-			unset($this->effects[$effectId]);
-			$effect->remove($this);
+	/**
+	 * @deprecated
+	 *
+	 * @param int $effectId
+	 */
+	public function removeEffect(int $effectId){
 
-			$this->recalculateEffectColor();
-		}
 	}
 
-	public function getEffect($effectId){
-		return isset($this->effects[$effectId]) ? $this->effects[$effectId] : null;
+	/**
+	 * @deprecated
+	 *
+	 * @param int $effectId
+	 *
+	 * @return Effect|null
+	 */
+	public function getEffect(int $effectId){
+		return null;
 	}
 
-	public function hasEffect($effectId){
-		return isset($this->effects[$effectId]);
+	/**
+	 * @deprecated
+	 *
+	 * @param int $effectId
+	 *
+	 * @return bool
+	 */
+	public function hasEffect(int $effectId) : bool{
+		return false;
 	}
 
+	/**
+	 * @deprecated
+	 *
+	 * @param Effect $effect
+	 */
 	public function addEffect(Effect $effect){
-		if(isset($this->effects[$effect->getId()])){
-			$oldEffect = $this->effects[$effect->getId()];
-			if(
-				abs($effect->getAmplifier()) < ($oldEffect->getAmplifier())
-				or (abs($effect->getAmplifier()) === abs($oldEffect->getAmplifier())
-					and $effect->getDuration() < $oldEffect->getDuration())
-			){
-				return;
-			}
-			$effect->add($this, true, $oldEffect);
-		}else{
-			$effect->add($this, false);
-		}
-
-		$this->effects[$effect->getId()] = $effect;
-
-		$this->recalculateEffectColor();
-	}
-
-	protected function recalculateEffectColor(){
-		//TODO: add transparency values
-		$color = [0, 0, 0]; //RGB
-		$count = 0;
-		$ambient = true;
-		foreach($this->effects as $effect){
-			if($effect->isVisible() and $effect->hasBubbles()){
-				$c = $effect->getColor();
-				$color[0] += $c[0] * $effect->getEffectLevel();
-				$color[1] += $c[1] * $effect->getEffectLevel();
-				$color[2] += $c[2] * $effect->getEffectLevel();
-				$count += $effect->getEffectLevel();
-				if(!$effect->isAmbient()){
-					$ambient = false;
-				}
-			}
-		}
-
-		if($count > 0){
-			$r = ($color[0] / $count) & 0xff;
-			$g = ($color[1] / $count) & 0xff;
-			$b = ($color[2] / $count) & 0xff;
-
-			$this->setDataProperty(Entity::DATA_POTION_COLOR, Entity::DATA_TYPE_INT, 0xff000000 | ($r << 16) | ($g << 8) | $b);
-			$this->setDataProperty(Entity::DATA_POTION_AMBIENT, Entity::DATA_TYPE_BYTE, $ambient ? 1 : 0);
-		}else{
-			$this->setDataProperty(Entity::DATA_POTION_COLOR, Entity::DATA_TYPE_INT, 0);
-			$this->setDataProperty(Entity::DATA_POTION_AMBIENT, Entity::DATA_TYPE_BYTE, 0);
-		}
+		throw new \BadMethodCallException("Cannot add effects to non-living entities");
 	}
 
 	/**
@@ -540,7 +725,7 @@ abstract class Entity extends Location implements Metadatable{
 	 * @param CompoundTag $nbt
 	 * @param             $args
 	 *
-	 * @return Entity
+	 * @return Entity|null
 	 */
 	public static function createEntity($type, Level $level, CompoundTag $nbt, ...$args){
 		if(isset(self::$knownEntities[$type])){
@@ -551,7 +736,7 @@ abstract class Entity extends Location implements Metadatable{
 		return null;
 	}
 
-	public static function registerEntity($className, $force = false){
+	public static function registerEntity($className, bool $force = false) : bool{
 		$class = new \ReflectionClass($className);
 		if(is_a($className, Entity::class, true) and !$class->isAbstract()){
 			if($className::NETWORK_ID !== -1){
@@ -582,7 +767,7 @@ abstract class Entity extends Location implements Metadatable{
 			$this->namedtag->id = new StringTag("id", $this->getSaveId());
 			if($this->getNameTag() !== ""){
 				$this->namedtag->CustomName = new StringTag("CustomName", $this->getNameTag());
-				$this->namedtag->CustomNameVisible = new StringTag("CustomNameVisible", $this->isNameTagVisible());
+				$this->namedtag->CustomNameVisible = new ByteTag("CustomNameVisible", $this->isNameTagVisible() ? 1 : 0);
 			}else{
 				unset($this->namedtag->CustomName);
 				unset($this->namedtag->CustomNameVisible);
@@ -590,44 +775,27 @@ abstract class Entity extends Location implements Metadatable{
 		}
 
 		$this->namedtag->Pos = new ListTag("Pos", [
-			new DoubleTag(0, $this->x),
-			new DoubleTag(1, $this->y),
-			new DoubleTag(2, $this->z)
+			new DoubleTag("", $this->x),
+			new DoubleTag("", $this->y),
+			new DoubleTag("", $this->z)
 		]);
 
 		$this->namedtag->Motion = new ListTag("Motion", [
-			new DoubleTag(0, $this->motionX),
-			new DoubleTag(1, $this->motionY),
-			new DoubleTag(2, $this->motionZ)
+			new DoubleTag("", $this->motionX),
+			new DoubleTag("", $this->motionY),
+			new DoubleTag("", $this->motionZ)
 		]);
 
 		$this->namedtag->Rotation = new ListTag("Rotation", [
-			new FloatTag(0, $this->yaw),
-			new FloatTag(1, $this->pitch)
+			new FloatTag("", $this->yaw),
+			new FloatTag("", $this->pitch)
 		]);
 
 		$this->namedtag->FallDistance = new FloatTag("FallDistance", $this->fallDistance);
 		$this->namedtag->Fire = new ShortTag("Fire", $this->fireTicks);
 		$this->namedtag->Air = new ShortTag("Air", $this->getDataProperty(self::DATA_AIR));
-		$this->namedtag->OnGround = new ByteTag("OnGround", $this->onGround == true ? 1 : 0);
-		$this->namedtag->Invulnerable = new ByteTag("Invulnerable", $this->invulnerable == true ? 1 : 0);
-
-		if(count($this->effects) > 0){
-			$effects = [];
-			foreach($this->effects as $effect){
-				$effects[$effect->getId()] = new CompoundTag($effect->getId(), [
-					"Id" => new ByteTag("Id", $effect->getId()),
-					"Amplifier" => new ByteTag("Amplifier", $effect->getAmplifier()),
-					"Duration" => new IntTag("Duration", $effect->getDuration()),
-					"Ambient" => new ByteTag("Ambient", 0),
-					"ShowParticles" => new ByteTag("ShowParticles", $effect->isVisible() ? 1 : 0)
-				]);
-			}
-
-			$this->namedtag->ActiveEffects = new ListTag("ActiveEffects", $effects);
-		}else{
-			unset($this->namedtag->ActiveEffects);
-		}
+		$this->namedtag->OnGround = new ByteTag("OnGround", $this->onGround ? 1 : 0);
+		$this->namedtag->Invulnerable = new ByteTag("Invulnerable", $this->invulnerable ? 1 : 0);
 	}
 
 	protected function initEntity(){
@@ -641,30 +809,16 @@ abstract class Entity extends Location implements Metadatable{
 		}
 
 		$this->scheduleUpdate();
-
-		if(isset($this->namedtag->ActiveEffects)){
-			foreach($this->namedtag->ActiveEffects->getValue() as $e){
-				$amplifier = $e["Amplifier"] & 0xff; //0-255 only
-
-				$effect = Effect::getEffect($e["Id"]);
-				if($effect === null){
-					continue;
-				}
-
-				$effect->setAmplifier($amplifier)->setDuration($e["Duration"])->setVisible($e["ShowParticles"] > 0);
-
-				$this->addEffect($effect);
-			}
-		}
 	}
 
 	protected function addAttributes(){
+
 	}
 
 	/**
 	 * @return Player[]
 	 */
-	public function getViewers(){
+	public function getViewers() : array{
 		return $this->hasSpawned;
 	}
 
@@ -677,18 +831,13 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
+	/**
+	 * @deprecated
+	 *
+	 * @param Player $player
+	 */
 	public function sendPotionEffects(Player $player){
-		foreach($this->effects as $effect){
-			$pk = new MobEffectPacket();
-			$pk->eid = $this->id;
-			$pk->effectId = $effect->getId();
-			$pk->amplifier = $effect->getAmplifier();
-			$pk->particles = $effect->isVisible();
-			$pk->duration = $effect->getDuration();
-			$pk->eventId = MobEffectPacket::EVENT_ADD;
 
-			$player->dataPacket($pk);
-		}
 	}
 
 	/**
@@ -701,8 +850,8 @@ abstract class Entity extends Location implements Metadatable{
 		}
 
 		$pk = new SetEntityDataPacket();
-		$pk->eid = $this->getId();
-		$pk->metadata = $data === null ? $this->dataProperties : $data;
+		$pk->entityRuntimeId = $this->getId();
+		$pk->metadata = $data ?? $this->dataProperties;
 
 		foreach($player as $p){
 			if($p === $this){
@@ -724,7 +873,7 @@ abstract class Entity extends Location implements Metadatable{
 		if(isset($this->hasSpawned[$player->getLoaderId()])){
 			if($send){
 				$pk = new RemoveEntityPacket();
-				$pk->eid = $this->id;
+				$pk->entityUniqueId = $this->id;
 				$player->dataPacket($pk);
 			}
 			unset($this->hasSpawned[$player->getLoaderId()]);
@@ -732,20 +881,9 @@ abstract class Entity extends Location implements Metadatable{
 	}
 
 	/**
-	 * @param float             $damage
 	 * @param EntityDamageEvent $source
-	 *
 	 */
-	public function attack($damage, EntityDamageEvent $source){
-		if($this->hasEffect(Effect::FIRE_RESISTANCE) and (
-				$source->getCause() === EntityDamageEvent::CAUSE_FIRE
-				or $source->getCause() === EntityDamageEvent::CAUSE_FIRE_TICK
-				or $source->getCause() === EntityDamageEvent::CAUSE_LAVA
-			)
-		){
-			$source->setCancelled();
-		}
-
+	public function attack(EntityDamageEvent $source){
 		$this->server->getPluginManager()->callEvent($source);
 		if($source->isCancelled()){
 			return;
@@ -771,11 +909,9 @@ abstract class Entity extends Location implements Metadatable{
 	}
 
 	/**
-	 * @param float                   $amount
 	 * @param EntityRegainHealthEvent $source
-	 *
 	 */
-	public function heal($amount, EntityRegainHealthEvent $source){
+	public function heal(EntityRegainHealthEvent $source){
 		$this->server->getPluginManager()->callEvent($source);
 		if($source->isCancelled()){
 			return;
@@ -785,24 +921,23 @@ abstract class Entity extends Location implements Metadatable{
 	}
 
 	/**
-	 * @return int
+	 * @return float
 	 */
-	public function getHealth(){
+	public function getHealth() : float{
 		return $this->health;
 	}
 
-	public function isAlive(){
+	public function isAlive() : bool{
 		return $this->health > 0;
 	}
 
 	/**
 	 * Sets the health of the Entity. This won't send any update to the players
 	 *
-	 * @param int $amount
+	 * @param float $amount
 	 */
-	public function setHealth($amount){
-		$amount = (int) $amount;
-		if($amount === $this->health){
+	public function setHealth(float $amount){
+		if($amount == $this->health){
 			return;
 		}
 
@@ -811,17 +946,17 @@ abstract class Entity extends Location implements Metadatable{
 				$this->kill();
 			}
 		}elseif($amount <= $this->getMaxHealth() or $amount < $this->health){
-			$this->health = (int) $amount;
+			$this->health = $amount;
 		}else{
 			$this->health = $this->getMaxHealth();
 		}
 	}
 
-	public function getAbsorption() : int{
+	public function getAbsorption() : float{
 		return 0;
 	}
 
-	public function setAbsorption(int $absorption){
+	public function setAbsorption(float $absorption){
 
 	}
 
@@ -846,22 +981,26 @@ abstract class Entity extends Location implements Metadatable{
 	/**
 	 * @return int
 	 */
-	public function getMaxHealth(){
+	public function getMaxHealth() : int{
 		return $this->maxHealth;
 	}
 
 	/**
 	 * @param int $amount
 	 */
-	public function setMaxHealth($amount){
-		$this->maxHealth = (int) $amount;
+	public function setMaxHealth(int $amount){
+		$this->maxHealth = $amount;
 	}
 
-	public function canCollideWith(Entity $entity){
+	public function canCollideWith(Entity $entity) : bool{
 		return !$this->justCreated and $entity !== $this;
 	}
 
-	protected function checkObstruction($x, $y, $z){
+	protected function checkObstruction(float $x, float $y, float $z) : bool{
+		if(count($this->level->getCollisionCubes($this, $this->getBoundingBox(), false)) === 0){
+			return false;
+		}
+
 		$i = Math::floorFloat($x);
 		$j = Math::floorFloat($y);
 		$k = Math::floorFloat($z);
@@ -870,13 +1009,13 @@ abstract class Entity extends Location implements Metadatable{
 		$diffY = $y - $j;
 		$diffZ = $z - $k;
 
-		if(Block::$solid[$this->level->getBlockIdAt($i, $j, $k)]){
-			$flag = !Block::$solid[$this->level->getBlockIdAt($i - 1, $j, $k)];
-			$flag1 = !Block::$solid[$this->level->getBlockIdAt($i + 1, $j, $k)];
-			$flag2 = !Block::$solid[$this->level->getBlockIdAt($i, $j - 1, $k)];
-			$flag3 = !Block::$solid[$this->level->getBlockIdAt($i, $j + 1, $k)];
-			$flag4 = !Block::$solid[$this->level->getBlockIdAt($i, $j, $k - 1)];
-			$flag5 = !Block::$solid[$this->level->getBlockIdAt($i, $j, $k + 1)];
+		if(BlockFactory::$solid[$this->level->getBlockIdAt($i, $j, $k)]){
+			$flag = !BlockFactory::$solid[$this->level->getBlockIdAt($i - 1, $j, $k)];
+			$flag1 = !BlockFactory::$solid[$this->level->getBlockIdAt($i + 1, $j, $k)];
+			$flag2 = !BlockFactory::$solid[$this->level->getBlockIdAt($i, $j - 1, $k)];
+			$flag3 = !BlockFactory::$solid[$this->level->getBlockIdAt($i, $j + 1, $k)];
+			$flag4 = !BlockFactory::$solid[$this->level->getBlockIdAt($i, $j, $k - 1)];
+			$flag5 = !BlockFactory::$solid[$this->level->getBlockIdAt($i, $j, $k + 1)];
 
 			$direction = -1;
 			$limit = 9999;
@@ -952,12 +1091,9 @@ abstract class Entity extends Location implements Metadatable{
 		return false;
 	}
 
-	public function entityBaseTick($tickDiff = 1){
-
-		Timings::$timerEntityBaseTick->startTiming();
+	public function entityBaseTick(int $tickDiff = 1) : bool{
 		//TODO: check vehicles
 
-		$this->blocksAround = null;
 		$this->justCreated = false;
 
 		if(!$this->isAlive()){
@@ -967,20 +1103,12 @@ abstract class Entity extends Location implements Metadatable{
 				$this->close();
 			}
 
-			Timings::$timerEntityBaseTick->stopTiming();
 			return false;
 		}
 
-		if(count($this->effects) > 0){
-			foreach($this->effects as $effect){
-				if($effect->canTick()){
-					$effect->applyEffect($this);
-				}
-				$effect->setDuration($effect->getDuration() - $tickDiff);
-				if($effect->getDuration() <= 0){
-					$this->removeEffect($effect->getId());
-				}
-			}
+		if(count($this->changedDataProperties) > 0){
+			$this->sendData($this->hasSpawned, $this->changedDataProperties);
+			$this->changedDataProperties = [];
 		}
 
 		$hasUpdate = false;
@@ -989,31 +1117,12 @@ abstract class Entity extends Location implements Metadatable{
 
 		if($this->y <= -16 and $this->isAlive()){
 			$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_VOID, 10);
-			$this->attack($ev->getFinalDamage(), $ev);
+			$this->attack($ev);
 			$hasUpdate = true;
 		}
 
-		if($this->fireTicks > 0){
-			if($this->isFireProof()){
-				if($this->fireTicks > 1){
-					$this->fireTicks = 1;
-				}else{
-					$this->fireTicks -= 1;
-				}
-			}else{
-				if(!$this->hasEffect(Effect::FIRE_RESISTANCE) and (($this->fireTicks % 20) === 0 or $tickDiff > 20)){
-					$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_FIRE_TICK, 1);
-					$this->attack($ev->getFinalDamage(), $ev);
-				}
-				$this->fireTicks -= $tickDiff;
-			}
-
-			if($this->fireTicks <= 0){
-				$this->extinguish();
-			}else{
-				$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_ONFIRE, true);
-				$hasUpdate = true;
-			}
+		if($this->isOnFire()){
+			$hasUpdate = ($hasUpdate || $this->doOnFireTick($tickDiff));
 		}
 
 		if($this->noDamageTicks > 0){
@@ -1026,9 +1135,37 @@ abstract class Entity extends Location implements Metadatable{
 		$this->age += $tickDiff;
 		$this->ticksLived += $tickDiff;
 
-		Timings::$timerEntityBaseTick->stopTiming();
-
 		return $hasUpdate;
+	}
+
+	protected function doOnFireTick(int $tickDiff = 1) : bool{
+		if($this->isFireProof() and $this->fireTicks > 1){
+			$this->fireTicks = 1;
+		}else{
+			$this->fireTicks -= $tickDiff;
+		}
+
+
+
+		if(($this->fireTicks % 20 === 0) or $tickDiff > 20){
+			$this->dealFireDamage();
+		}
+
+		if(!$this->isOnFire()){
+			$this->extinguish();
+		}else{
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Called to deal damage to entities when they are on fire.
+	 */
+	protected function dealFireDamage(){
+		$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_FIRE_TICK, 1);
+		$this->attack($ev);
 	}
 
 	protected function updateMovement(){
@@ -1037,7 +1174,7 @@ abstract class Entity extends Location implements Metadatable{
 
 		$diffMotion = ($this->motionX - $this->lastMotionX) ** 2 + ($this->motionY - $this->lastMotionY) ** 2 + ($this->motionZ - $this->lastMotionZ) ** 2;
 
-		if($diffPosition > 0.04 or $diffRotation > 2.25 and ($diffMotion > 0.0001 and $this->getMotion()->lengthSquared() <= 0.00001)){ //0.2 ** 2, 1.5 ** 2
+		if($diffPosition > 0.0001 or $diffRotation > 1.0){
 			$this->lastX = $this->x;
 			$this->lastY = $this->y;
 			$this->lastZ = $this->z;
@@ -1045,7 +1182,7 @@ abstract class Entity extends Location implements Metadatable{
 			$this->lastYaw = $this->yaw;
 			$this->lastPitch = $this->pitch;
 
-			$this->level->addEntityMovement($this->chunk->getX(), $this->chunk->getZ(), $this->id, $this->x, $this->y + $this->getEyeHeight(), $this->z, $this->yaw, $this->pitch, $this->yaw);
+			$this->level->addEntityMovement($this->chunk->getX(), $this->chunk->getZ(), $this->id, $this->x, $this->y + $this->baseOffset, $this->z, $this->yaw, $this->pitch, $this->yaw);
 		}
 
 		if($diffMotion > 0.0025 or ($diffMotion > 0.0001 and $this->getMotion()->lengthSquared() <= 0.0001)){ //0.05 ** 2
@@ -1057,10 +1194,39 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
+	protected function applyDragBeforeGravity() : bool{
+		return false;
+	}
+
+	protected function applyGravity(){
+		$this->motionY -= $this->gravity;
+	}
+
+	protected function tryChangeMovement(){
+		$friction = 1 - $this->drag;
+
+		if($this->applyDragBeforeGravity()){
+			$this->motionY *= $friction;
+		}
+
+		$this->applyGravity();
+
+		if(!$this->applyDragBeforeGravity()){
+			$this->motionY *= $friction;
+		}
+
+		if($this->onGround){
+			$friction *= $this->level->getBlock($this->floor()->subtract(0, 1, 0))->getFrictionFactor();
+		}
+
+		$this->motionX *= $friction;
+		$this->motionZ *= $friction;
+	}
+
 	/**
 	 * @return Vector3
 	 */
-	public function getDirectionVector(){
+	public function getDirectionVector() : Vector3{
 		$y = -sin(deg2rad($this->pitch));
 		$xz = cos(deg2rad($this->pitch));
 		$x = -$xz * sin(deg2rad($this->yaw));
@@ -1069,17 +1235,23 @@ abstract class Entity extends Location implements Metadatable{
 		return $this->temporalVector->setComponents($x, $y, $z)->normalize();
 	}
 
-	public function getDirectionPlane(){
+	public function getDirectionPlane() : Vector2{
 		return (new Vector2(-cos(deg2rad($this->yaw) - M_PI_2), -sin(deg2rad($this->yaw) - M_PI_2)))->normalize();
 	}
 
-	public function onUpdate($currentTick){
+	public function onUpdate(int $currentTick) : bool{
 		if($this->closed){
 			return false;
 		}
 
+		$tickDiff = $currentTick - $this->lastUpdate;
+		if($tickDiff <= 0){
+			$this->server->getLogger()->debug("Expected tick difference of at least 1, got $tickDiff for " . get_class($this));
+			return false;
+		}
+
 		if(!$this->isAlive()){
-			++$this->deadTicks;
+			$this->deadTicks += $tickDiff;
 			if($this->deadTicks >= 10){
 				$this->despawnFromAll();
 				if(!$this->isPlayer){
@@ -1089,23 +1261,38 @@ abstract class Entity extends Location implements Metadatable{
 			return $this->deadTicks < 10;
 		}
 
-		$tickDiff = $currentTick - $this->lastUpdate;
-		if($tickDiff <= 0){
-			return false;
-		}
-
 		$this->lastUpdate = $currentTick;
 
 		$this->timings->startTiming();
 
-		$hasUpdate = $this->entityBaseTick($tickDiff);
+		if($this->hasMovementUpdate()){
+			$this->tryChangeMovement();
+			$this->move($this->motionX, $this->motionY, $this->motionZ);
 
-		$this->updateMovement();
+			if(abs($this->motionX) <= self::MOTION_THRESHOLD){
+				$this->motionX = 0;
+			}
+			if(abs($this->motionY) <= self::MOTION_THRESHOLD){
+				$this->motionY = 0;
+			}
+			if(abs($this->motionZ) <= self::MOTION_THRESHOLD){
+				$this->motionZ = 0;
+			}
+
+			$this->updateMovement();
+			$this->forceMovementUpdate = false;
+		}
+
+		Timings::$timerEntityBaseTick->startTiming();
+		$hasUpdate = $this->entityBaseTick($tickDiff);
+		Timings::$timerEntityBaseTick->stopTiming();
+
+
 
 		$this->timings->stopTiming();
 
 		//if($this->isStatic())
-		return $hasUpdate;
+		return ($hasUpdate or $this->hasMovementUpdate());
 		//return !($this instanceof Player);
 	}
 
@@ -1113,21 +1300,57 @@ abstract class Entity extends Location implements Metadatable{
 		$this->level->updateEntities[$this->id] = $this;
 	}
 
-	public function isOnFire(){
+	/**
+	 * Flags the entity as needing a movement update on the next tick. Setting this forces a movement update even if the
+	 * entity's motion is zero. Used to trigger movement updates when blocks change near entities.
+	 *
+	 * @param bool $value
+	 */
+	final public function setForceMovementUpdate(bool $value = true){
+		$this->forceMovementUpdate = $value;
+
+		$this->blocksAround = null;
+	}
+
+	/**
+	 * Returns whether the entity needs a movement update on the next tick.
+	 * @return bool
+	 */
+	final public function hasMovementUpdate() : bool{
+		return (
+			$this->forceMovementUpdate or
+			$this->motionX != 0 or
+			$this->motionY != 0 or
+			$this->motionZ != 0 or
+			!$this->onGround
+		);
+	}
+
+	public function isOnFire() : bool{
 		return $this->fireTicks > 0;
 	}
 
-	public function setOnFire($seconds){
+	public function setOnFire(int $seconds){
 		$ticks = $seconds * 20;
 		if($ticks > $this->fireTicks){
 			$this->fireTicks = $ticks;
 		}
+
+		$this->setGenericFlag(self::DATA_FLAG_ONFIRE, true);
+	}
+
+	public function extinguish(){
+		$this->fireTicks = 0;
+		$this->setGenericFlag(self::DATA_FLAG_ONFIRE, false);
 	}
 
 	public function isFireProof() : bool{
 		return false;
 	}
 
+	/**
+	 * @return int|null
+	 */
 	public function getDirection(){
 		$rotation = ($this->yaw - 90) % 360;
 		if($rotation < 0){
@@ -1146,25 +1369,22 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
-	public function extinguish(){
-		$this->fireTicks = 0;
-		$this->setDataFlag(self::DATA_FLAGS, self::DATA_FLAG_ONFIRE, false);
-	}
-
-	public function canTriggerWalking(){
+	public function canTriggerWalking() : bool{
 		return true;
 	}
 
 	public function resetFallDistance(){
-		$this->fallDistance = 0;
+		$this->fallDistance = 0.0;
 	}
 
-	protected function updateFallState($distanceThisTick, $onGround){
-		if($onGround === true){
+	/**
+	 * @param float $distanceThisTick
+	 * @param bool  $onGround
+	 */
+	protected function updateFallState(float $distanceThisTick, bool $onGround){
+		if($onGround){
 			if($this->fallDistance > 0){
-				if($this instanceof Living){
-					$this->fall($this->fallDistance);
-				}
+				$this->fall($this->fallDistance);
 				$this->resetFallDistance();
 			}
 		}elseif($distanceThisTick < 0){
@@ -1172,23 +1392,20 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
-	public function getBoundingBox(){
-		return $this->boundingBox;
-	}
+	/**
+	 * Called when a falling entity hits the ground.
+	 *
+	 * @param float $fallDistance
+	 */
+	public function fall(float $fallDistance){
 
-	public function fall($fallDistance){
-		$damage = floor($fallDistance - 3 - ($this->hasEffect(Effect::JUMP) ? $this->getEffect(Effect::JUMP)->getEffectLevel() : 0));
-		if($damage > 0){
-			$ev = new EntityDamageEvent($this, EntityDamageEvent::CAUSE_FALL, $damage);
-			$this->attack($ev->getFinalDamage(), $ev);
-		}
 	}
 
 	public function handleLavaMovement(){ //TODO
 
 	}
 
-	public function getEyeHeight(){
+	public function getEyeHeight() : float{
 		return $this->eyeHeight;
 	}
 
@@ -1200,7 +1417,7 @@ abstract class Entity extends Location implements Metadatable{
 
 	}
 
-	protected function switchLevel(Level $targetLevel){
+	protected function switchLevel(Level $targetLevel) : bool{
 		if($this->closed){
 			return false;
 		}
@@ -1225,15 +1442,15 @@ abstract class Entity extends Location implements Metadatable{
 		return true;
 	}
 
-	public function getPosition(){
-		return new Position($this->x, $this->y, $this->z, $this->level);
+	public function getPosition() : Position{
+		return $this->asPosition();
 	}
 
-	public function getLocation(){
-		return new Location($this->x, $this->y, $this->z, $this->yaw, $this->pitch, $this->level);
+	public function getLocation() : Location{
+		return $this->asLocation();
 	}
 
-	public function isInsideOfWater(){
+	public function isInsideOfWater() : bool{
 		$block = $this->level->getBlock($this->temporalVector->setComponents(Math::floorFloat($this->x), Math::floorFloat($y = ($this->y + $this->getEyeHeight())), Math::floorFloat($this->z)));
 
 		if($block instanceof Water){
@@ -1244,18 +1461,17 @@ abstract class Entity extends Location implements Metadatable{
 		return false;
 	}
 
-	public function isInsideOfSolid(){
+	public function isInsideOfSolid() : bool{
 		$block = $this->level->getBlock($this->temporalVector->setComponents(Math::floorFloat($this->x), Math::floorFloat($y = ($this->y + $this->getEyeHeight())), Math::floorFloat($this->z)));
 
 		$bb = $block->getBoundingBox();
 
-		if($bb !== null and $block->isSolid() and !$block->isTransparent() and $bb->intersectsWith($this->getBoundingBox())){
-			return true;
-		}
-		return false;
+		return $bb !== null and $block->isSolid() and !$block->isTransparent() and $bb->intersectsWith($this->getBoundingBox());
 	}
 
-	public function fastMove($dx, $dy, $dz){
+	public function fastMove(float $dx, float $dy, float $dz) : bool{
+		$this->blocksAround = null;
+
 		if($dx == 0 and $dz == 0 and $dy == 0){
 			return true;
 		}
@@ -1294,13 +1510,12 @@ abstract class Entity extends Location implements Metadatable{
 		return true;
 	}
 
-	public function move($dx, $dy, $dz){
+	public function move(float $dx, float $dy, float $dz) : bool{
+		$this->blocksAround = null;
 
 		if($dx == 0 and $dz == 0 and $dy == 0){
 			return true;
 		}
-
-		$this->blocksAround = null;
 
 		if($this->keepMovement){
 			$this->boundingBox->offset($dx, $dy, $dz);
@@ -1455,21 +1670,25 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
-	protected function checkGroundState($movX, $movY, $movZ, $dx, $dy, $dz){
+	protected function checkGroundState(float $movX, float $movY, float $movZ, float $dx, float $dy, float $dz){
 		$this->isCollidedVertically = $movY != $dy;
 		$this->isCollidedHorizontally = ($movX != $dx or $movZ != $dz);
 		$this->isCollided = ($this->isCollidedHorizontally or $this->isCollidedVertically);
 		$this->onGround = ($movY != $dy and $movY < 0);
 	}
 
-	public function getBlocksAround(){
+	/**
+	 * @return Block[]
+	 */
+	public function getBlocksAround() : array{
 		if($this->blocksAround === null){
-			$minX = Math::floorFloat($this->boundingBox->minX);
-			$minY = Math::floorFloat($this->boundingBox->minY);
-			$minZ = Math::floorFloat($this->boundingBox->minZ);
-			$maxX = Math::ceilFloat($this->boundingBox->maxX);
-			$maxY = Math::ceilFloat($this->boundingBox->maxY);
-			$maxZ = Math::ceilFloat($this->boundingBox->maxZ);
+			$bb = $this->boundingBox->grow(0.01, 0.01, 0.01);
+			$minX = Math::floorFloat($bb->minX);
+			$minY = Math::floorFloat($bb->minY);
+			$minZ = Math::floorFloat($bb->minZ);
+			$maxX = Math::ceilFloat($bb->maxX);
+			$maxY = Math::ceilFloat($bb->maxY);
+			$maxZ = Math::ceilFloat($bb->maxZ);
 
 			$this->blocksAround = [];
 
@@ -1505,7 +1724,7 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
-	public function setPositionAndRotation(Vector3 $pos, $yaw, $pitch){
+	public function setPositionAndRotation(Vector3 $pos, float $yaw, float $pitch) : bool{
 		if($this->setPosition($pos) === true){
 			$this->setRotation($yaw, $pitch);
 
@@ -1515,7 +1734,7 @@ abstract class Entity extends Location implements Metadatable{
 		return false;
 	}
 
-	public function setRotation($yaw, $pitch){
+	public function setRotation(float $yaw, float $pitch){
 		$this->yaw = $yaw;
 		$this->pitch = $pitch;
 		$this->scheduleUpdate();
@@ -1573,7 +1792,13 @@ abstract class Entity extends Location implements Metadatable{
 		return true;
 	}
 
-	public function getMotion(){
+	protected function resetLastMovements(){
+		list($this->lastX, $this->lastY, $this->lastZ) = [$this->x, $this->y, $this->z];
+		list($this->lastYaw, $this->lastPitch) = [$this->yaw, $this->pitch];
+		list($this->lastMotionX, $this->lastMotionY, $this->lastMotionZ) = [$this->motionX, $this->motionY, $this->motionZ];
+	}
+
+	public function getMotion() : Vector3{
 		return new Vector3($this->motionX, $this->motionY, $this->motionZ);
 	}
 
@@ -1596,7 +1821,7 @@ abstract class Entity extends Location implements Metadatable{
 		return true;
 	}
 
-	public function isOnGround(){
+	public function isOnGround() : bool{
 		return $this->onGround === true;
 	}
 
@@ -1607,15 +1832,15 @@ abstract class Entity extends Location implements Metadatable{
 
 	/**
 	 * @param Vector3|Position|Location $pos
-	 * @param float                     $yaw
-	 * @param float                     $pitch
+	 * @param float|null                $yaw
+	 * @param float|null                $pitch
 	 *
 	 * @return bool
 	 */
-	public function teleport(Vector3 $pos, $yaw = null, $pitch = null){
+	public function teleport(Vector3 $pos, float $yaw = null, float $pitch = null) : bool{
 		if($pos instanceof Location){
-			$yaw = $yaw === null ? $pos->yaw : $yaw;
-			$pitch = $pitch === null ? $pos->pitch : $pitch;
+			$yaw = $yaw ?? $pos->yaw;
+			$pitch = $pitch ?? $pos->pitch;
 		}
 		$from = Position::fromObject($this, $this->level);
 		$to = Position::fromObject($pos, $pos instanceof Position ? $pos->getLevel() : $this->level);
@@ -1627,7 +1852,7 @@ abstract class Entity extends Location implements Metadatable{
 		$pos = $ev->getTo();
 
 		$this->setMotion($this->temporalVector->setComponents(0, 0, 0));
-		if($this->setPositionAndRotation($pos, $yaw === null ? $this->yaw : $yaw, $pitch === null ? $this->pitch : $pitch) !== false){
+		if($this->setPositionAndRotation($pos, $yaw ?? $this->yaw, $pitch ?? $this->pitch) !== false){
 			$this->resetFallDistance();
 			$this->onGround = true;
 
@@ -1646,7 +1871,7 @@ abstract class Entity extends Location implements Metadatable{
 		return false;
 	}
 
-	public function getId(){
+	public function getId() : int{
 		return $this->id;
 	}
 
@@ -1674,6 +1899,19 @@ abstract class Entity extends Location implements Metadatable{
 		}
 	}
 
+	/**
+	 * Returns whether the entity has been "closed".
+	 * @return bool
+	 */
+	public function isClosed() : bool{
+		return $this->closed;
+	}
+
+	/**
+	 * Closes the entity and frees attached references.
+	 *
+	 * WARNING: Entities are unusable after this has been executed!
+	 */
 	public function close(){
 		if(!$this->closed){
 			$this->server->getPluginManager()->callEvent(new EntityDespawnEvent($this));
@@ -1705,11 +1943,11 @@ abstract class Entity extends Location implements Metadatable{
 	 *
 	 * @return bool
 	 */
-	public function setDataProperty($id, $type, $value, $send = true){
+	public function setDataProperty(int $id, int $type, $value, bool $send = true) : bool{
 		if($this->getDataProperty($id) !== $value){
 			$this->dataProperties[$id] = [$type, $value];
-			if($send === true){
-				$this->sendData($this->hasSpawned, [$id => $this->dataProperties[$id]]);
+			if($send){
+				$this->changedDataProperties[$id] = $this->dataProperties[$id]; //This will be sent on the next tick
 			}
 
 			return true;
@@ -1723,61 +1961,86 @@ abstract class Entity extends Location implements Metadatable{
 	 *
 	 * @return mixed
 	 */
-	public function getDataProperty($id){
+	public function getDataProperty(int $id){
 		return isset($this->dataProperties[$id]) ? $this->dataProperties[$id][1] : null;
+	}
+
+	public function removeDataProperty(int $id){
+		unset($this->dataProperties[$id]);
 	}
 
 	/**
 	 * @param int $id
 	 *
-	 * @return int
+	 * @return int|null
 	 */
-	public function getDataPropertyType($id){
+	public function getDataPropertyType(int $id){
 		return isset($this->dataProperties[$id]) ? $this->dataProperties[$id][0] : null;
 	}
 
 	/**
 	 * @param int  $propertyId
-	 * @param int  $id
+	 * @param int  $flagId
 	 * @param bool $value
-	 * @param int  $type
+	 * @param int  $propertyType
 	 */
-	public function setDataFlag($propertyId, $id, $value = true, $type = self::DATA_TYPE_LONG){
-		if($this->getDataFlag($propertyId, $id) !== $value){
+	public function setDataFlag(int $propertyId, int $flagId, bool $value = true, int $propertyType = self::DATA_TYPE_LONG){
+		if($this->getDataFlag($propertyId, $flagId) !== $value){
 			$flags = (int) $this->getDataProperty($propertyId);
-			$flags ^= 1 << $id;
-			$this->setDataProperty($propertyId, $type, $flags);
+			$flags ^= 1 << $flagId;
+			$this->setDataProperty($propertyId, $propertyType, $flags);
 		}
 	}
 
 	/**
 	 * @param int $propertyId
-	 * @param int $id
+	 * @param int $flagId
 	 *
 	 * @return bool
 	 */
-	public function getDataFlag($propertyId, $id){
-		return (((int) $this->getDataProperty($propertyId)) & (1 << $id)) > 0;
+	public function getDataFlag(int $propertyId, int $flagId) : bool{
+		return (((int) $this->getDataProperty($propertyId)) & (1 << $flagId)) > 0;
+	}
+
+	/**
+	 * Wrapper around {@link Entity#getDataFlag} for generic data flag reading.
+	 *
+	 * @param int $flagId
+	 * @return bool
+	 */
+	public function getGenericFlag(int $flagId) : bool{
+		return $this->getDataFlag(self::DATA_FLAGS, $flagId);
+	}
+
+	/**
+	 * Wrapper around {@link Entity#setDataFlag} for generic data flag setting.
+	 *
+	 * @param int  $flagId
+	 * @param bool $value
+	 */
+	public function setGenericFlag(int $flagId, bool $value = true){
+		$this->setDataFlag(self::DATA_FLAGS, $flagId, $value, self::DATA_TYPE_LONG);
 	}
 
 	public function __destruct(){
 		$this->close();
 	}
 
-	public function setMetadata($metadataKey, MetadataValue $metadataValue){
-		$this->server->getEntityMetadata()->setMetadata($this, $metadataKey, $metadataValue);
+
+	public function setMetadata(string $metadataKey, MetadataValue $newMetadataValue){
+		$this->server->getEntityMetadata()->setMetadata($this, $metadataKey, $newMetadataValue);
 	}
 
-	public function getMetadata($metadataKey){
+	public function getMetadata(string $metadataKey){
 		return $this->server->getEntityMetadata()->getMetadata($this, $metadataKey);
 	}
 
-	public function hasMetadata($metadataKey){
+	public function hasMetadata(string $metadataKey) : bool{
 		return $this->server->getEntityMetadata()->hasMetadata($this, $metadataKey);
 	}
 
-	public function removeMetadata($metadataKey, Plugin $plugin){
-		$this->server->getEntityMetadata()->removeMetadata($this, $metadataKey, $plugin);
+	public function removeMetadata(string $metadataKey, Plugin $owningPlugin){
+		$this->server->getEntityMetadata()->removeMetadata($this, $metadataKey, $owningPlugin);
 	}
 
 	public function __toString(){

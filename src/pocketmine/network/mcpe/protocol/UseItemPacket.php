@@ -19,11 +19,14 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
 
 
+use pocketmine\item\Item;
 use pocketmine\network\mcpe\NetworkSession;
 
 class UseItemPacket extends DataPacket{
@@ -34,7 +37,6 @@ class UseItemPacket extends DataPacket{
 	public $z;
 	public $blockId;
 	public $face;
-	public $item;
 	public $fx;
 	public $fy;
 	public $fz;
@@ -42,8 +44,10 @@ class UseItemPacket extends DataPacket{
 	public $posY;
 	public $posZ;
 	public $slot;
+	/** @var Item */
+	public $item;
 
-	public function decode(){
+	public function decodePayload(){
 		$this->getBlockPosition($this->x, $this->y, $this->z);
 		$this->blockId = $this->getUnsignedVarInt();
 		$this->face = $this->getVarInt();
@@ -53,8 +57,13 @@ class UseItemPacket extends DataPacket{
 		$this->item = $this->getSlot();
 	}
 
-	public function encode(){
-
+	public function encodePayload(){
+		$this->putUnsignedVarInt($this->blockId);
+		$this->putUnsignedVarInt($this->face);
+		$this->putVector3f($this->fx, $this->fy, $this->fz);
+		$this->putVector3f($this->posX, $this->posY, $this->posZ);
+		$this->putVarInt($this->slot);
+		$this->putSlot($this->item);
 	}
 
 	public function handle(NetworkSession $session) : bool{

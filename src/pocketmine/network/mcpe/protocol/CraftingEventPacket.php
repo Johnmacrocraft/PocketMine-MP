@@ -19,18 +19,22 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
 
 use pocketmine\item\Item;
 use pocketmine\network\mcpe\NetworkSession;
+use pocketmine\utils\UUID;
 
 class CraftingEventPacket extends DataPacket{
 	const NETWORK_ID = ProtocolInfo::CRAFTING_EVENT_PACKET;
 
 	public $windowId;
 	public $type;
+	/** @var UUID */
 	public $id;
 	/** @var Item[] */
 	public $input = [];
@@ -43,7 +47,7 @@ class CraftingEventPacket extends DataPacket{
 		return parent::clean();
 	}
 
-	public function decode(){
+	public function decodePayload(){
 		$this->windowId = $this->getByte();
 		$this->type = $this->getVarInt();
 		$this->id = $this->getUUID();
@@ -59,8 +63,20 @@ class CraftingEventPacket extends DataPacket{
 		}
 	}
 
-	public function encode(){
+	public function encodePayload(){
+		$this->putByte($this->windowId);
+		$this->putVarInt($this->type);
+		$this->putUUID($this->id);
 
+		$this->putUnsignedVarInt(count($this->input));
+		foreach($this->input as $item){
+			$this->putSlot($item);
+		}
+
+		$this->putUnsignedVarInt(count($this->output));
+		foreach($this->output as $item){
+			$this->putSlot($item);
+		}
 	}
 
 	public function handle(NetworkSession $session) : bool{

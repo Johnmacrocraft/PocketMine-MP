@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -42,12 +44,23 @@ class PlayerListPacket extends DataPacket{
 		return parent::clean();
 	}
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->type = $this->getByte();
+		$count = $this->getUnsignedVarInt();
+		for($i = 0; $i < $count; ++$i){
+			if($this->type === self::TYPE_ADD){
+				$this->entries[$i][0] = $this->getUUID();
+				$this->entries[$i][1] = $this->getEntityUniqueId();
+				$this->entries[$i][2] = $this->getString();
+				$this->entries[$i][3] = $this->getString();
+				$this->entries[$i][4] = $this->getString();
+			}else{
+				$this->entries[$i][0] = $this->getUUID();
+			}
+		}
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putByte($this->type);
 		$this->putUnsignedVarInt(count($this->entries));
 		foreach($this->entries as $d){

@@ -19,15 +19,17 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\item;
 
 
 class Snowball extends Item{
-	public function __construct($meta = 0, $count = 1){
-		parent::__construct(self::SNOWBALL, 0, $count, "Snowball");
+	public function __construct(int $meta = 0){
+		parent::__construct(self::SNOWBALL, $meta, "Snowball");
 	}
 
-	public function getMaxStackSize(){
+	public function getMaxStackSize() : int{
 		return 16;
 	}
 

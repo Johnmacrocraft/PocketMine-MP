@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 
 namespace pocketmine\network\mcpe\protocol;
 
@@ -39,16 +41,16 @@ class ResourcePackStackPacket extends DataPacket{
 	/** @var ResourcePack[] */
 	public $resourcePackStack = [];
 
-	public function decode(){
+	public function decodePayload(){
 		/*$this->mustAccept = $this->getBool();
-		$behaviorPackCount = $this->getLShort();
+		$behaviorPackCount = $this->getUnsignedVarInt();
 		while($behaviorPackCount-- > 0){
 			$packId = $this->getString();
 			$version = $this->getString();
 			$this->behaviorPackStack[] = new ResourcePackInfoEntry($packId, $version);
 		}
 
-		$resourcePackCount = $this->getLShort();
+		$resourcePackCount = $this->getUnsignedVarInt();
 		while($resourcePackCount-- > 0){
 			$packId = $this->getString();
 			$version = $this->getString();
@@ -56,17 +58,16 @@ class ResourcePackStackPacket extends DataPacket{
 		}*/
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putBool($this->mustAccept);
 
-		$this->putLShort(count($this->behaviorPackStack));
+		$this->putUnsignedVarInt(count($this->behaviorPackStack));
 		foreach($this->behaviorPackStack as $entry){
 			$this->putString($entry->getPackId());
 			$this->putString($entry->getPackVersion());
 		}
 
-		$this->putLShort(count($this->resourcePackStack));
+		$this->putUnsignedVarInt(count($this->resourcePackStack));
 		foreach($this->resourcePackStack as $entry){
 			$this->putString($entry->getPackId());
 			$this->putString($entry->getPackVersion());

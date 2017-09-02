@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\block;
 
 use pocketmine\item\Tool;
@@ -28,19 +30,19 @@ class SoulSand extends Solid{
 
 	protected $id = self::SOUL_SAND;
 
-	public function __construct(){
-
+	public function __construct(int $meta = 0){
+		$this->meta = $meta;
 	}
 
-	public function getName(){
+	public function getName() : string{
 		return "Soul Sand";
 	}
 
-	public function getHardness(){
+	public function getHardness() : float{
 		return 0.5;
 	}
 
-	public function getToolType(){
+	public function getToolType() : int{
 		return Tool::TYPE_SHOVEL;
 	}
 

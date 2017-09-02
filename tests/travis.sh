@@ -17,7 +17,11 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-cp -r tests/plugins plugins
+rm server.log 2> /dev/null
+mkdir -p ./plugins
+
+cp -r tests/plugins/PocketMine-DevTools ./plugins
+
 "$PHP_BINARY" ./plugins/PocketMine-DevTools/src/DevTools/ConsoleScript.php --make ./plugins/PocketMine-DevTools --relative ./plugins/PocketMine-DevTools --out ./plugins/DevTools.phar
 rm -rf ./plugins/PocketMine-DevTools
 
@@ -27,4 +31,22 @@ if ls plugins/DevTools/PocketMine*.phar >/dev/null 2>&1; then
 else
     echo No phar created!
     exit 1
+fi
+
+cp -r tests/plugins/PocketMine-TesterPlugin ./plugins
+echo -e "stop\n" | "$PHP_BINARY" src/pocketmine/PocketMine.php --no-wizard --disable-ansi --disable-readline --debug.level=2
+
+output=$(grep '\[TesterPlugin\]' server.log)
+if [ "$output" == "" ]; then
+	echo TesterPlugin failed to run tests, check the logs
+	exit 1
+fi
+
+result=$(echo "$output" | grep 'Finished' | grep -v 'PASS')
+if [ "$result" != "" ]; then
+   echo "$result"
+   echo Some tests did not complete successfully, changing build status to failed
+   exit 1
+else
+    echo All tests passed
 fi

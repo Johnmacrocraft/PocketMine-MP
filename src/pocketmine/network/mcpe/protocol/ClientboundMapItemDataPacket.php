@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 
 namespace pocketmine\network\mcpe\protocol;
 
@@ -48,14 +50,14 @@ class ClientboundMapItemDataPacket extends DataPacket{
 	/** @var Color[][] */
 	public $colors = [];
 
-	public function decode(){
-		$this->mapId = $this->getVarInt();
+	public function decodePayload(){
+		$this->mapId = $this->getEntityUniqueId();
 		$this->type = $this->getUnsignedVarInt();
 
 		if(($this->type & 0x08) !== 0){
 			$count = $this->getUnsignedVarInt();
 			for($i = 0; $i < $count; ++$i){
-				$this->eids[] = $this->getVarInt(); //entity unique ID, signed var-int
+				$this->eids[] = $this->getEntityUniqueId();
 			}
 		}
 
@@ -91,9 +93,8 @@ class ClientboundMapItemDataPacket extends DataPacket{
 		}
 	}
 
-	public function encode(){
-		$this->reset();
-		$this->putVarInt($this->mapId); //entity unique ID, signed var-int
+	public function encodePayload(){
+		$this->putEntityUniqueId($this->mapId);
 
 		$type = 0;
 		if(($eidsCount = count($this->eids)) > 0){
@@ -111,7 +112,7 @@ class ClientboundMapItemDataPacket extends DataPacket{
 		if(($type & 0x08) !== 0){ //TODO: find out what these are for
 			$this->putUnsignedVarInt($eidsCount);
 			foreach($this->eids as $eid){
-				$this->putVarInt($eid);
+				$this->putEntityUniqueId($eid);
 			}
 		}
 
@@ -126,6 +127,7 @@ class ClientboundMapItemDataPacket extends DataPacket{
 				$this->putByte($decoration["xOffset"]);
 				$this->putByte($decoration["yOffset"]);
 				$this->putString($decoration["label"]);
+				assert($decoration["color"] instanceof Color);
 				$this->putLInt($decoration["color"]->toARGB());
 			}
 		}

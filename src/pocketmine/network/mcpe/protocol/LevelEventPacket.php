@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -71,10 +73,13 @@ class LevelEventPacket extends DataPacket{
 
 	const EVENT_PARTICLE_BLOCK_FORCE_FIELD = 2008;
 
+	const EVENT_PARTICLE_PUNCH_BLOCK = 2014;
+
 	const EVENT_START_RAIN = 3001;
 	const EVENT_START_THUNDER = 3002;
 	const EVENT_STOP_RAIN = 3003;
 	const EVENT_STOP_THUNDER = 3004;
+	const EVENT_PAUSE_GAME = 3005; //data: 1 to pause, 0 to resume
 
 	const EVENT_REDSTONE_TRIGGER = 3500;
 	const EVENT_CAULDRON_EXPLODE = 3501;
@@ -85,6 +90,9 @@ class LevelEventPacket extends DataPacket{
 	const EVENT_CAULDRON_FILL_WATER = 3506;
 	const EVENT_CAULDRON_TAKE_WATER = 3507;
 	const EVENT_CAULDRON_ADD_DYE = 3508;
+
+	const EVENT_BLOCK_START_BREAK = 3600;
+	const EVENT_BLOCK_STOP_BREAK = 3601;
 
 	const EVENT_SET_DATA = 4000;
 
@@ -98,12 +106,13 @@ class LevelEventPacket extends DataPacket{
 	public $z = 0;
 	public $data;
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->evid = $this->getVarInt();
+		$this->getVector3f($this->x, $this->y, $this->z);
+		$this->data = $this->getVarInt();
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putVarInt($this->evid);
 		$this->putVector3f($this->x, $this->y, $this->z);
 		$this->putVarInt($this->data);

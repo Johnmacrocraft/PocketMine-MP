@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -31,12 +33,12 @@ class RequestChunkRadiusPacket extends DataPacket{
 
 	public $radius;
 
-	public function decode(){
+	public function decodePayload(){
 		$this->radius = $this->getVarInt();
 	}
 
-	public function encode(){
-
+	public function encodePayload(){
+		$this->putVarInt($this->radius);
 	}
 
 	public function handle(NetworkSession $session) : bool{

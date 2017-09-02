@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -34,15 +36,18 @@ class PlayerInputPacket extends DataPacket{
 	public $unknownBool1;
 	public $unknownBool2;
 
-	public function decode(){
+	public function decodePayload(){
 		$this->motionX = $this->getLFloat();
 		$this->motionY = $this->getLFloat();
 		$this->unknownBool1 = $this->getBool();
 		$this->unknownBool2 = $this->getBool();
 	}
 
-	public function encode(){
-
+	public function encodePayload(){
+		$this->putLFloat($this->motionX);
+		$this->putLFloat($this->motionY);
+		$this->putBool($this->unknownBool1);
+		$this->putBool($this->unknownBool2);
 	}
 
 	public function handle(NetworkSession $session) : bool{

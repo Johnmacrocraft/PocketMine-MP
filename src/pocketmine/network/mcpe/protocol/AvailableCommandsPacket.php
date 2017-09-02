@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -29,14 +31,14 @@ class AvailableCommandsPacket extends DataPacket{
 	const NETWORK_ID = ProtocolInfo::AVAILABLE_COMMANDS_PACKET;
 
 	public $commands; //JSON-encoded command data
-	public $unknown;
+	public $unknown = "";
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->commands = $this->getString();
+		$this->unknown = $this->getString();
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putString($this->commands);
 		$this->putString($this->unknown);
 	}

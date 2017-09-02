@@ -19,12 +19,15 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
 
+use pocketmine\entity\Attribute;
 use pocketmine\entity\Entity;
-use pocketmine\item\Item;
+use pocketmine\item\ItemFactory;
 use pocketmine\network\mcpe\NetworkSession;
 use pocketmine\utils\BinaryStream;
 use pocketmine\utils\Utils;
@@ -52,9 +55,30 @@ abstract class DataPacket extends BinaryStream{
 		return false;
 	}
 
-	abstract public function encode();
+	public function decode(){
+		$this->offset = 1;
+		$this->decodePayload();
+	}
 
-	abstract public function decode();
+	/**
+	 * Note for plugin developers: If you're adding your own packets, you should perform decoding in here.
+	 */
+	public function decodePayload(){
+
+	}
+
+	public function encode(){
+		$this->reset();
+		$this->encodePayload();
+		$this->isEncoded = true;
+	}
+
+	/**
+	 * Note for plugin developers: If you're adding your own packets, you should perform encoding in here.
+	 */
+	public function encodePayload(){
+
+	}
 
 	/**
 	 * Performs handling for this packet. Usually you'll want an appropriately named method in the NetworkSession for this.
@@ -83,7 +107,7 @@ abstract class DataPacket extends BinaryStream{
 	public function __debugInfo(){
 		$data = [];
 		foreach($this as $k => $v){
-			if($k === "buffer"){
+			if($k === "buffer" and is_string($v)){
 				$data[$k] = bin2hex($v);
 			}elseif(is_string($v) or (is_object($v) and method_exists($v, "__toString"))){
 				$data[$k] = Utils::printable((string) $v);
@@ -114,7 +138,7 @@ abstract class DataPacket extends BinaryStream{
 					$value = $this->getByte();
 					break;
 				case Entity::DATA_TYPE_SHORT:
-					$value = $this->getLShort(true); //signed
+					$value = $this->getSignedLShort();
 					break;
 				case Entity::DATA_TYPE_INT:
 					$value = $this->getVarInt();
@@ -148,7 +172,7 @@ abstract class DataPacket extends BinaryStream{
 					$value = [];
 			}
 			if($types === true){
-				$data[$key] = [$value, $type];
+				$data[$key] = [$type, $value];
 			}else{
 				$data[$key] = $value;
 			}
@@ -185,7 +209,7 @@ abstract class DataPacket extends BinaryStream{
 					break;
 				case Entity::DATA_TYPE_SLOT:
 					//TODO: change this implementation (use objects)
-					$this->putSlot(Item::get($d[1][0], $d[1][2], $d[1][1])); //ID, damage, count
+					$this->putSlot(ItemFactory::get($d[1][0], $d[1][2], $d[1][1])); //ID, damage, count
 					break;
 				case Entity::DATA_TYPE_POS:
 					//TODO: change this implementation (use objects)
@@ -202,42 +226,90 @@ abstract class DataPacket extends BinaryStream{
 	}
 
 	/**
-	 * Reads and returns an EntityUniqueID
-	 * @return int|string
+	 * Reads a list of Attributes from the stream.
+	 * @return Attribute[]
+	 *
+	 * @throws \UnexpectedValueException if reading an attribute with an unrecognized name
 	 */
-	public function getEntityUniqueId(){
+	public function getAttributeList() : array{
+		$list = [];
+		$count = $this->getUnsignedVarInt();
+
+		for($i = 0; $i < $count; ++$i){
+			$min = $this->getLFloat();
+			$max = $this->getLFloat();
+			$current = $this->getLFloat();
+			$default = $this->getLFloat();
+			$name = $this->getString();
+
+			$attr = Attribute::getAttributeByName($name);
+			if($attr !== null){
+				$attr->setMinValue($min);
+				$attr->setMaxValue($max);
+				$attr->setValue($current);
+				$attr->setDefaultValue($default);
+
+				$list[] = $attr;
+			}else{
+				throw new \UnexpectedValueException("Unknown attribute type \"$name\"");
+			}
+		}
+
+		return $list;
+	}
+
+	/**
+	 * Writes a list of Attributes to the packet buffer using the standard format.
+	 * @param Attribute[] ...$attributes
+	 */
+	public function putAttributeList(Attribute ...$attributes){
+		$this->putUnsignedVarInt(count($attributes));
+		foreach($attributes as $attribute){
+			$this->putLFloat($attribute->getMinValue());
+			$this->putLFloat($attribute->getMaxValue());
+			$this->putLFloat($attribute->getValue());
+			$this->putLFloat($attribute->getDefaultValue());
+			$this->putString($attribute->getName());
+		}
+	}
+
+	/**
+	 * Reads and returns an EntityUniqueID
+	 * @return int
+	 */
+	public function getEntityUniqueId() : int{
 		return $this->getVarLong();
 	}
 
 	/**
 	 * Writes an EntityUniqueID
-	 * @param int|string $eid
+	 * @param int $eid
 	 */
-	public function putEntityUniqueId($eid){
+	public function putEntityUniqueId(int $eid){
 		$this->putVarLong($eid);
 	}
 
 	/**
 	 * Reads and returns an EntityRuntimeID
-	 * @return int|string
+	 * @return int
 	 */
-	public function getEntityRuntimeId(){
+	public function getEntityRuntimeId() : int{
 		return $this->getUnsignedVarLong();
 	}
 
 	/**
 	 * Writes an EntityUniqueID
-	 * @param int|string $eid
+	 * @param int $eid
 	 */
-	public function putEntityRuntimeId($eid){
+	public function putEntityRuntimeId(int $eid){
 		$this->putUnsignedVarLong($eid);
 	}
 
 	/**
 	 * Reads an block position with unsigned Y coordinate.
-	 * @param int $x
-	 * @param int $y 0-255
-	 * @param int $z
+	 * @param int &$x
+	 * @param int &$y
+	 * @param int &$z
 	 */
 	public function getBlockPosition(&$x, &$y, &$z){
 		$x = $this->getVarInt();
@@ -247,11 +319,11 @@ abstract class DataPacket extends BinaryStream{
 
 	/**
 	 * Writes a block position with unsigned Y coordinate.
-	 * @param int &$x
-	 * @param int &$y
-	 * @param int &$z
+	 * @param int $x
+	 * @param int $y
+	 * @param int $z
 	 */
-	public function putBlockPosition($x, $y, $z){
+	public function putBlockPosition(int $x, int $y, int $z){
 		$this->putVarInt($x);
 		$this->putUnsignedVarInt($y);
 		$this->putVarInt($z);
@@ -275,7 +347,7 @@ abstract class DataPacket extends BinaryStream{
 	 * @param int $y
 	 * @param int $z
 	 */
-	public function putSignedBlockPosition($x, $y, $z){
+	public function putSignedBlockPosition(int $x, int $y, int $z){
 		$this->putVarInt($x);
 		$this->putVarInt($y);
 		$this->putVarInt($z);
@@ -288,9 +360,9 @@ abstract class DataPacket extends BinaryStream{
 	 * @param float $z
 	 */
 	public function getVector3f(&$x, &$y, &$z){
-		$x = $this->getLFloat(4);
-		$y = $this->getLFloat(4);
-		$z = $this->getLFloat(4);
+		$x = $this->getRoundedLFloat(4);
+		$y = $this->getRoundedLFloat(4);
+		$z = $this->getRoundedLFloat(4);
 	}
 
 	/**
@@ -299,9 +371,73 @@ abstract class DataPacket extends BinaryStream{
 	 * @param float $y
 	 * @param float $z
 	 */
-	public function putVector3f($x, $y, $z){
+	public function putVector3f(float $x, float $y, float $z){
 		$this->putLFloat($x);
 		$this->putLFloat($y);
 		$this->putLFloat($z);
+	}
+
+	public function getByteRotation() : float{
+		return (float) ($this->getByte() * (360 / 256));
+	}
+
+	public function putByteRotation(float $rotation){
+		$this->putByte((int) ($rotation / (360 / 256)));
+	}
+
+	/**
+	 * Reads gamerules
+	 * TODO: implement this properly
+	 *
+	 * @return array
+	 */
+	public function getGameRules() : array{
+		$count = $this->getUnsignedVarInt();
+		$rules = [];
+		for($i = 0; $i < $count; ++$i){
+			$name = $this->getString();
+			$type = $this->getUnsignedVarInt();
+			$value = null;
+			switch($type){
+				case 1:
+					$value = $this->getBool();
+					break;
+				case 2:
+					$value = $this->getUnsignedVarInt();
+					break;
+				case 3:
+					$value = $this->getLFloat();
+					break;
+			}
+
+			$rules[$name] = [$type, $value];
+		}
+
+		return $rules;
+	}
+
+	/**
+	 * Writes a gamerule array
+	 * TODO: implement this properly
+	 *
+	 * @param array $rules
+	 */
+	public function putGameRules(array $rules){
+		$this->putUnsignedVarInt(count($rules));
+		foreach($rules as $name => $rule){
+			$this->putString($name);
+			$this->putUnsignedVarInt($rule[0]);
+			switch($rule[0]){
+				case 1:
+					$this->putBool($rule[1]);
+					break;
+				case 2:
+					$this->putUnsignedVarInt($rule[1]);
+					break;
+				case 3:
+					$this->putLFloat($rule[1]);
+					break;
+			}
+		}
 	}
 }

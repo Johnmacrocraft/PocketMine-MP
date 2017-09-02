@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -33,12 +35,12 @@ class RemoveBlockPacket extends DataPacket{
 	public $y;
 	public $z;
 
-	public function decode(){
+	public function decodePayload(){
 		$this->getBlockPosition($this->x, $this->y, $this->z);
 	}
 
-	public function encode(){
-
+	public function encodePayload(){
+		$this->putBlockPosition($this->x, $this->y, $this->z);
 	}
 
 	public function handle(NetworkSession $session) : bool{

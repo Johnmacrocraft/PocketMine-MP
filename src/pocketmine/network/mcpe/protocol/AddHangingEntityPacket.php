@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -33,14 +35,16 @@ class AddHangingEntityPacket extends DataPacket{
 	public $x;
 	public $y;
 	public $z;
-	public $unknown;
+	public $unknown; //TODO (rotation?)
 
-	public function decode(){
-
+	public function decodePayload(){
+		$this->entityUniqueId = $this->getEntityUniqueId();
+		$this->entityRuntimeId = $this->getEntityRuntimeId();
+		$this->getBlockPosition($this->x, $this->y, $this->z);
+		$this->unknown = $this->getVarInt();
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putEntityUniqueId($this->entityUniqueId);
 		$this->putEntityRuntimeId($this->entityRuntimeId);
 		$this->putBlockPosition($this->x, $this->y, $this->z);

@@ -19,6 +19,8 @@
  *
 */
 
+declare(strict_types=1);
+
 namespace pocketmine\network\mcpe\protocol;
 
 #include <rules/DataPacket.h>
@@ -38,19 +40,23 @@ class CraftingDataPacket extends DataPacket{
 	const ENTRY_SHAPED = 1;
 	const ENTRY_FURNACE = 2;
 	const ENTRY_FURNACE_DATA = 3;
-	const ENTRY_MULTI = 4;
+	const ENTRY_MULTI = 4; //TODO
+	const ENTRY_SHULKER_BOX = 5; //TODO
 
 	/** @var object[] */
 	public $entries = [];
 	public $cleanRecipes = false;
 
+	public $decodedEntries = [];
+
 	public function clean(){
 		$this->entries = [];
+		$this->decodedEntries = [];
 		return parent::clean();
 	}
 
-	public function decode(){
-		$entries = [];
+	public function decodePayload(){
+		$this->decodedEntries = [];
 		$recipeCount = $this->getUnsignedVarInt();
 		for($i = 0; $i < $recipeCount; ++$i){
 			$entry = [];
@@ -58,6 +64,7 @@ class CraftingDataPacket extends DataPacket{
 
 			switch($recipeType){
 				case self::ENTRY_SHAPELESS:
+				case self::ENTRY_SHULKER_BOX:
 					$ingredientCount = $this->getUnsignedVarInt();
 					/** @var Item */
 					$entry["input"] = [];
@@ -101,7 +108,7 @@ class CraftingDataPacket extends DataPacket{
 				default:
 					throw new \UnexpectedValueException("Unhandled recipe type $recipeType!"); //do not continue attempting to decode
 			}
-			$entries[] = $entry;
+			$this->decodedEntries[] = $entry;
 		}
 		$this->getBool(); //cleanRecipes
 	}
@@ -178,8 +185,7 @@ class CraftingDataPacket extends DataPacket{
 		$this->entries[] = $recipe;
 	}
 
-	public function encode(){
-		$this->reset();
+	public function encodePayload(){
 		$this->putUnsignedVarInt(count($this->entries));
 
 		$writer = new BinaryStream();
